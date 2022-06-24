@@ -32,14 +32,12 @@ data Typ = Int
 
 data Expr p = Lit (XLit p) Integer
             | Var (XVar p) Var
-            | Ann (XAnn p) (Expr p) Typ
             | Abs (XAbs p) Var (Expr p)
             | App (XApp p) (Expr p) (Expr p)
-            | XExpr !(XXExpr p) -- Constructor extension point
+            | XExpr !(XXExpr p)
 
 type family XLit p
 type family XVar p
-type family XAnn p
 type family XAbs p
 type family XApp p
 type family XXExpr p
@@ -53,7 +51,6 @@ data UD
 
 type instance XLit   UD = ()
 type instance XVar   UD = ()
-type instance XAnn   UD = ()
 type instance XAbs   UD = ()
 type instance XApp   UD = ()
 type instance XXExpr UD = Void
@@ -69,12 +66,13 @@ instances for it. In the original paper some solutions are provided
 
 \begin{itemize}
     \item ignore the extension points, although we no longer give the user the
-        flexibility of an function or instance that takes into consideration the
+        flexibility of a function or instance that takes into consideration the
         extension points they defined.
 
     \item or make use of higher order functions in the implementation, allowing for some
         custom usage of the extension points, but still restricted within the
-        context of the generic implementation.
+        context of the generic implementation, over trees with possibly hundreds
+        of extension points.
 \end{itemize}
 
 The second option, while more flexible, still isn't sufficient when faced with
@@ -92,6 +90,93 @@ function from any user needing that extra bit of flexibility.
 This paper describes an idiom to define generic functions over the extensible
 abstract syntax tree which allow drop-in definitions from the user that take
 their extension instance into account.
+
+In this Section 2 is the description and explanation of the programming idiom,
+Section 3 has examples, Section 4 describes the reasoning to get here.
+
+\section{Overriding Default Implementations}
+
+In this section we propose a way to define generic functions and type instances
+that work regardless of the extensions of an extensible data type, that by
+default don't assume anything about the extension points, but which allow
+themselves to be partially overriden by a user defined implementation that does
+take into consideration the extension points (enabling a complete
+reimplementation of the function or instance if desired).
+
+Our first insight is that the generically defined function should call a user
+defined function with the default polymorphic implementation as an argument.
+This user defined function then returns the final implementation which handles
+the desired cases and defaults to the polymorphic implementation bound as an
+argument. We'll call this function \emph{override :: f -> f}.
+
+The second insight is that the override function must depend on the TTG \emph{p}
+parameter to behave (possibly) uniquely across stages.
+
+The third and final insight is that we want to override multiple
+functions of different types \emph{f}, and possibly even some with the same
+type. This means \emph{override} must be defined on a \emph{per-function} basis
+depending on the name and type of the function its overriding.
+
+Our proposed solution is a type-class declaring \emph{override}.
+
+\begin{lstlisting}
+class Override p (name :: Symbol) f where
+    override :: f -> f
+    override = id
+\end{lstlisting}
+
+Generic functions or type-class function instances now depend on an \emph{Override}
+instance and should call \emph{override} with the default, extension-agnostic,
+implementation. For example, to define a generic printing function
+
+\begin{lstlisting}
+instance Override p "show" (Expr p -> String)
+      => Show (Expr p)
+      where
+      show = override (\case
+        Lit _ i -> show i
+        Var _ s -> s
+        Abs _ v e -> "λ" <> v <> "." <> show e
+        App _ f v -> "(" <> show f <> ") (" <> show v <> ")"
+        XExpr _ -> "fail: XExpr; or assume Show (XXExpr p)?")
+\end{lstlisting}
+
+Users extending the datatype should define an instance for
+each generic function they need to use, and can optionally define
+\emph{override} and make use of the generic implementation (which is the first
+parameter) for any cases they don't need to handle in a custom manner.
+
+Following the printing example, if we don't need to modify the generic
+\emph{show} for the \emph{UD} extension, but would like to use it, we'd simply
+write
+\begin{lstlisting}
+instance Override UD "show" (Expr UD -> String)
+\end{lstlisting}
+
+Otherwise, if we had a datatype \emph{Decorated} and wanted a custom \emph{show}
+instance, we'd have
+
+\begin{lstlisting}
+data Decorated
+
+-- If Abs is anotated with true, we want to print
+-- the variable, otherwise we omit it
+type instance XVar Decorated = Bool
+...
+
+instance Override UD "show" (Expr UD -> String) where
+    override def = \case
+        a@(Abs True v e) -> def a
+        Abs False v e -> "λ" <> v <> "." <> show e
+        x -> def x
+\end{lstlisting}
+
+
+\section{Examples}
+
+\subsection{Pretty Printing in GHC}
+
+...
 
 \section{Watering Trees That Grow}
 
