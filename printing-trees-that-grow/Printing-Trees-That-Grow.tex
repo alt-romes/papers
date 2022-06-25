@@ -138,7 +138,8 @@ instance Override p "show" (Expr p -> String)
         Var _ s -> s
         Abs _ v e -> "λ" <> v <> "." <> show e
         App _ f v -> "(" <> show f <> ") (" <> show v <> ")"
-        XExpr _ -> "fail: XExpr; or assume Show (XXExpr p)?")
+        XExpr _ -> ??? -- discussed below
+        )
 \end{lstlisting}
 
 Users extending the datatype should define an instance for
@@ -162,14 +163,26 @@ data Decorated
 -- If Abs is anotated with true, we want to print
 -- the variable, otherwise we omit it
 type instance XVar Decorated = Bool
+type instance XXExpr Decorated = Void
 ...
 
 instance Override UD "show" (Expr UD -> String) where
     override def = \case
         a@(Abs True v e) -> def a
         Abs False v e -> "λ" <> v <> "." <> show e
+        XExpr x -> absurd x
         x -> def x
 \end{lstlisting}
+
+To address the fact that there won't always be an easy default implementation
+for the new constructors extension point, (\emph{XExpr} in the above example),
+we remind that nothing too exotic needs to happen. If there's a
+\emph{monoid-identity-like} value we can return for that case, better, but,
+otherwise, we can add another constraint \emph{Show (XXExpr p)} to enforce there
+is a way to \emph{show} the constructor extension point -- again, the other
+extension points don't need to be featured as higher order functions or
+constraints because are handled when the corresponding constructor case is
+overriden.
 
 
 \section{Examples}
@@ -335,10 +348,10 @@ machinery which complicates the program code, requiring both
 \emph{UndecidableInstances} and \emph{AllowAmbigousTypes}, meaning the override
 function requires explicit type applications.
 
-There's still a somewhat big problem. How do we define a generic function such as
-\emph{show} taking into consideration the constructors extension point? For
-now, I think most reasonable way is to panic on the default implementation if there's
-nothing like an \emph{monoid empty} on the return type -- and make sure the
-override implementation handles the extra constructor case.
+% There's still some problems. How do we define a generic function such as
+% \emph{show} taking into consideration the constructors extension point? For
+% now, I think most reasonable way is to panic on the default implementation if there's
+% nothing like an \emph{monoid empty} on the return type -- and make sure the
+% override implementation handles the extra constructor case.
 
 \end{document}
