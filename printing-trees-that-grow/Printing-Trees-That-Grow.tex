@@ -91,8 +91,10 @@ This paper describes an idiom to define generic functions over the extensible
 abstract syntax tree which allow drop-in definitions from the user that take
 their extension instance into account.
 
-In this Section 2 is the description and explanation of the programming idiom,
-Section 3 has examples, Section 4 describes the reasoning to get here.
+% In this Section 2 is the description and explanation of the \emph{TTG override} programming idiom,
+% Section 3 a description of the \emph{TTG instance} programming idiom,
+% Section 4 has examples, Section 5 describes the reasoning to get here, Section 6
+% drawbacks...
 
 \section{Overriding Default Implementations}
 
@@ -133,7 +135,7 @@ implementation. For example, to define a generic printing function
 instance Override p "show" (Expr p -> String)
       => Show (Expr p)
       where
-      show = override (\case
+      show = override @p @"show" (\case
         Lit _ i -> show i
         Var _ s -> s
         Abs _ v e -> "λ" <> v <> "." <> show e
@@ -184,6 +186,45 @@ extension points don't need to be featured as higher order functions or
 constraints because are handled when the corresponding constructor case is
 overriden.
 
+\section{On Orphans}
+
+Although the idea solves the problem of defining generic functions over TTG
+types, the orphan issue is not solved but rather aggravated by this solution.
+For `Override` instances not to be orphans they have to be defined next to where
+the ttg-stage-type was defined. Additionally, the haddock rendering of the
+\emph{Override} instances is complicated and confusing.
+
+% In the case for \emph{override}, we can write a generic function with a default
+% implementation that can be overriden, providing flexibility, code reuse accross
+% stages and instances that \emph{aren't} orphans -- meaning said instances are
+% associated to the TTG types in the modules they are declared and
+% \textbf{describe the dependency on a TTG stage instance in the constraints}.
+
+Orphans by nature make type instances less visible, and a programmer which
+doesn't know that an instance for a type-class lives in some module \textbf{X}
+might end up believing such instance doesn't exist. By having the non-orphan
+instance with the \emph{Override} we explicitly say that the existance does
+exist as long as the TTG stage acknowledge it exists (that is, the user must
+instance \emph{Override} whether they provide an overrided definition or not).
+
+% However, we must contemplate another situation: an instance that \emph{only}
+% exists for the user defined stage. Here, \emph{Override} doesn't buy us much
+% since there isn't a default implementation we can provide.
+
+% After writing this, I think the bit below isn't a good solution at all, but just
+% a thought that might spring others...
+
+% To this effect we introduce a type-class that serves basically as a stepping
+% stone in instancing a class for a datatype by delegating the actual
+% implementation to the TTG-stage instance.
+
+% \begin{lstlisting}
+% class Instance p (s :: Symbol) f where
+%     definition :: f
+% \end{lstlisting}
+
+% Now we can define non-orphan instances that simply delegates the actual
+% instancing to user extending the TTG-datatype.
 
 \section{Examples}
 
@@ -191,7 +232,15 @@ overriden.
 
 ...
 
+\subsection{Other orphans in GHC}
+
+...
+
 \section{Watering Trees That Grow}
+
+This section is the initial draft. It roughly explains how I formulated the
+idea, but I don't think it adds much to the above. If this ever leaves the
+"draft" state it will be deleted for the most part. Feel free to skip it.
 
 We would like to construct a clever way of having generic definitions of
 functions over an extensible data type, definitions which allow the extensible
@@ -341,10 +390,12 @@ instance TTG p "show" (Expr p -> String) where
         x -> def x
 \end{lstlisting}
 
-This approach still has its drawbacks. For one, this makes it impossible to
-reuse parts of the default implementation, leading to code duplication in
-branches similar to the default, and secondly, we depend on much type-level
-machinery which complicates the program code, requiring both
+\section{Drawbacks}
+
+This approach still has its drawbacks. For one, this makes it sometimes
+impossible to reuse parts of the default implementation, leading to code
+duplication in branches similar to the default, and secondly, we depend on much
+type-level machinery which complicates the program code, requiring both
 \emph{UndecidableInstances} and \emph{AllowAmbigousTypes}, meaning the override
 function requires explicit type applications.
 
